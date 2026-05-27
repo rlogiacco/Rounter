@@ -114,17 +114,48 @@ void connect(unsigned long maxWait = 0) {
 /*** Button Functions ***/
 bool reset = false;
 void plus(uint16_t* var, uint8_t val = 1) {
-  if (*var < 99) *var = *var + val;
+  *var = *var < 99 - val ? *var + val : 99;
 }
-
 void minus(uint16_t* var, uint8_t val = 1) {
-  if (*var > 0) *var = *var - val;
+  *var = (*var > val) ? *var - val : 0;
 }
 
 void clickA() {
   DEBUG("Button A click");
-  if (mode == DISPLAY_MODE) plus(&counter);
-  if (mode == SETTING_MODE) plus(&settings.duration, 10);
+  if (mode == DISPLAY_MODE) counter = counter < 99 ? counter + 1 : 99;
+  if (mode == SETTING_MODE) settings.duration += 10;
+}
+void doubleClickA() {
+  DEBUG("Button A double click");
+  if (mode == DISPLAY_MODE) counter = counter < 90 ? counter + 10 : 99;
+  if (mode == SETTING_MODE) settings.duration += 60;
+}
+void clickC() {
+  DEBUG("Button C click");
+  if (mode == DISPLAY_MODE) counter = counter > 0 ? counter - 1 : 0;
+  if (mode == SETTING_MODE) settings.duration = settings.duration > 10 ? settings.duration - 10 : 0;
+}
+void doubleClickC() {
+  DEBUG("Button C double click");
+  if (mode == DISPLAY_MODE) counter = counter > 9 ? counter - 10 : 0;
+  if (mode == SETTING_MODE) settings.duration = settings.duration > 60 ? settings.duration - 60 : 0;
+}
+void longHoldAC() {
+  DEBUG("Button A or C long hold");
+  if (reset) {    
+    if (mode == DISPLAY_MODE) {
+        counter = 0;
+    }
+    if (mode == TIMER_MODE) {
+        settings.duration = EEPROM.get(0, settings).duration;
+    }
+  } else { 
+    reset = true; 
+  }
+}
+void longReleaseAC() {
+  DEBUG("Button A or C long release");
+  reset = false;
 }
 void clickB() {
   DEBUG("Button B click");
@@ -161,23 +192,7 @@ void longHoldB() {
   DEBUG("Button B long hold");
   mode += BATTERY_MODE;
 }
-void clickC() {
-  DEBUG("Button C click");
-  if (mode == DISPLAY_MODE) minus(&counter);
-  if (mode == SETTING_MODE) minus(&settings.duration, 10);
-}
-void longHoldAC() {
-  DEBUG("Button A or C long hold");
-  if (reset) {
-    counter = 0;
-  } else { 
-    reset = true; 
-  }
-}
-void longReleaseAC() {
-  DEBUG("Button A or C long release");
-  reset = false;
-}
+
 
 void setup() {
   Serial.begin(9600);
@@ -213,13 +228,15 @@ void setup() {
   server.begin();
 
   btnA.attachClick(clickA);
+  btnA.attachDoubleClick(doubleClickA);
   btnA.attachLongPressStart(longHoldAC);
   btnA.attachLongPressStop(longReleaseAC);
   btnB.attachClick(clickB);
+  btnB.attachDoubleClick(doubleClickB);
   btnB.attachLongPressStart(longHoldB);
   btnB.attachLongPressStop(longClickB);
-  btnB.attachDoubleClick(doubleClickB);
   btnC.attachClick(clickC);
+  btnC.attachDoubleClick(doubleClickC);
   btnC.attachLongPressStart(longHoldAC);
   btnC.attachLongPressStop(longReleaseAC);
 
@@ -230,14 +247,20 @@ void setup() {
   analogReadResolution(12); 
 	battery.begin(3300, 2.0, &sigmoidal);
 
-  connect(1000);
-  CRGB color = CRGB::RoyalBlue;
-  for (uint8_t i = 0; i < 10; i++) {
+  display(88, CRGB::Yellow);
+  connect(10000);
+  display(88, CRGB::Green);
+  for (uint8_t i = 0; i < 9; i++) {
     if (checkWiFi()) {
-      color = CRGB::Green;
+      display(88, CRGB::Green);
+      delay(500);
+      break;
     }
-    display(i * 11, color);
     delay(250);
+  }
+  if (!checkWiFi()) {
+    display(88, CRGB::Red);
+    DEBUG("Failed to connect to WiFi");
   }
   
   lastSlowRefresh = millis();
@@ -263,7 +286,8 @@ void loop() {
         timer();
         break;
       case SETTING_MODE:
-        display(settings.duration, CRGB::Blue);
+        // show minutes if duration is more than 100 seconds
+        display(settings.duration < 100 ? settings.duration : (settings.duration / 60), CRGB::Blue);
         break;
     }
   }
@@ -274,6 +298,10 @@ void loop() {
       connect();
     }
     DEBUG("Battery voltage is %umV, level is %u%%", battery.voltage(), battery.level());
+    int rawValue = analogRead(BAT_PIN);
+    float voltage = (rawValue / 4095.0) * 3.3;
+    DEBUG("Raw ADC value on pin %u is %u, voltage is %.2fV", BAT_PIN, rawValue, voltage);
+    DEBUG("Battery voltage on pin %u is %umV", BAT_PIN, analogReadMilliVolts(BAT_PIN));
     if (mode == BATTERY_MODE) {
       display(battery.level(), CRGB::Yellow);
     }
@@ -303,12 +331,14 @@ void handleCounter() {
 }
 void handlePlus() {
   char buffer[10];
-  itoa(++counter, buffer, 10);
+  counter < 99 ? counter++ : counter;
+  itoa(counter, buffer, 10);
   server.send(200, "text/html", buffer);
 }
 void handleMinus() {
   char buffer[10];
-  itoa(--counter, buffer, 10);
+  counter > 0 ? counter-- : counter;
+  itoa(counter, buffer, 10);
   server.send(200, "text/html", buffer);
 }
 void handleMode() {
@@ -407,9 +437,10 @@ void num(uint8_t val, uint8_t pos, CRGB color) {
 }
 
 void showTimer() {
-  CRGB color = CRGB::Red;
+  //CRGB color = blend(CRGB::Red, CRGB::Yellow, (ticking * 255) / settings.duration);
+  CRGB color = CRGB::Blue;
   if (ticking > 10) {
-    display(ticking < 100 ? ticking : (ticking / 60) + 1, CRGB::Blue);
+    display(ticking < 100 ? ticking : (ticking / 60) + 1, color);
   } else {
     display(ticking, CRGB::Red);
   } 
