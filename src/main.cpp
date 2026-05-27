@@ -42,7 +42,7 @@ OneButton btnC(9);
 
 /*** Battery ***/
 #include <Battery.h>
-Battery battery(3300, 4200, A0);
+Battery battery(3300, 4200, A0, 12);
 #define BAT_PIN 0
 #define BAT_VOLTAGE 4300
 #define BAT_RES_UP 21800
@@ -226,6 +226,8 @@ void setup() {
   FastLED.addLeds<WS2812, DATA_PIN, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(128);
   
+  analogSetAttenuation(ADC_11db); 
+  analogReadResolution(12); 
 	battery.begin(3300, 2.0, &sigmoidal);
 
   connect(1000);
