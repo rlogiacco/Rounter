@@ -66,6 +66,7 @@ const uint8_t clockIdxs[8] = { 4, 5, 0, 1, 8, 9, 10, 11 };
 void clear();
 void display(uint16_t, CRGB);
 void timer();
+void pulse(uint16_t, CRGB);
 
 #define DISPLAY_MODE 0
 #define TIMER_MODE 1
@@ -179,13 +180,15 @@ void doubleClickB() {
 }
 void longClickB() {
   DEBUG("Button B long click");
-  if (mode >= BATTERY_MODE) mode -= BATTERY_MODE;
-  if (mode == DISPLAY_MODE) {
+  if (mode >= BATTERY_MODE) {
+    mode -= BATTERY_MODE;
+  } else if (mode == DISPLAY_MODE) {
     mode = SETTING_MODE;
   } else if (mode == SETTING_MODE) {
     DEBUG("Storing timer duration at %u", settings.duration);
     EEPROM.put(0, settings);
     EEPROM.commit();
+    pulse(settings.duration > 100 ? settings.duration / 60 : settings.duration, CRGB::Blue);
     mode = DISPLAY_MODE;
   }
 }
@@ -283,7 +286,7 @@ void loop() {
       case BATTERY_MODE + DISPLAY_MODE:
       case BATTERY_MODE + TIMER_MODE:
       case BATTERY_MODE + TIMER_MODE_PAUSE:
-        display(battery.level(), CRGB::Yellow);
+        display(battery.level(voltage), CRGB::VioletRed);
         break;
     }
   }
@@ -436,6 +439,14 @@ void showTimer() {
   } 
 }
 
+void pulse(uint16_t num, CRGB color) {
+  for (uint8_t i = 0; i < 10; i++) {
+    display(num, i % 2 == 0 ? CRGB::Red : CRGB::Black);
+    FastLED.show();
+    delay(250);
+  }
+}
+
 void timer() {
   if (mode == TIMER_MODE_PAUSE) {
     showTimer();
@@ -450,15 +461,7 @@ void timer() {
   }
   if (ticking == 0) {
     // pulse and exit timer mode
-    for (uint8_t i = 0; i < 10; i++) {
-      if (i % 2 == 0) {
-        display(0, CRGB::Red);
-      } else {
-        display(0, CRGB::Black);
-      }
-      FastLED.show();
-      delay(250);
-    }
+    pulse(0, CRGB::Red);
     mode = DISPLAY_MODE;
   } else {
     fadeToBlackBy(leds, NUM_LEDS, 50);
