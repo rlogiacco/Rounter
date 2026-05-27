@@ -43,6 +43,7 @@ OneButton btnC(9);
 /*** Battery ***/
 #include <Battery.h>
 Battery battery(3300, 4200, A0, 12);
+uint16_t voltage = 0;
 #define BAT_PIN 0
 #define BAT_VOLTAGE 4300
 #define BAT_RES_UP 21800
@@ -246,22 +247,12 @@ void setup() {
   analogSetAttenuation(ADC_11db); 
   analogReadResolution(12); 
 	battery.begin(3300, 2.0, &sigmoidal);
+  voltage = battery.voltage();
 
-  display(88, CRGB::Yellow);
-  connect(10000);
-  display(88, CRGB::Green);
-  for (uint8_t i = 0; i < 9; i++) {
-    if (checkWiFi()) {
-      display(88, CRGB::Green);
-      delay(500);
-      break;
-    }
-    delay(250);
-  }
-  if (!checkWiFi()) {
-    display(88, CRGB::Red);
-    DEBUG("Failed to connect to WiFi");
-  }
+  display(88, CRGB::Blue);
+  connect(5000);
+  display(88, checkWiFi() ? CRGB::Green : CRGB::Red);
+  delay(1000);
   
   lastSlowRefresh = millis();
   DEBUG("Setup complete!");
@@ -289,6 +280,11 @@ void loop() {
         // show minutes if duration is more than 100 seconds
         display(settings.duration < 100 ? settings.duration : (settings.duration / 60), CRGB::Blue);
         break;
+      case BATTERY_MODE + DISPLAY_MODE:
+      case BATTERY_MODE + TIMER_MODE:
+      case BATTERY_MODE + TIMER_MODE_PAUSE:
+        display(battery.level(), CRGB::Yellow);
+        break;
     }
   }
   if (millis() - lastSlowRefresh >= SLOW_REFRESH_MS) {
@@ -297,14 +293,8 @@ void loop() {
     if (!checkWiFi()) {
       connect();
     }
-    DEBUG("Battery voltage is %umV, level is %u%%", battery.voltage(), battery.level());
-    int rawValue = analogRead(BAT_PIN);
-    float voltage = (rawValue / 4095.0) * 3.3;
-    DEBUG("Raw ADC value on pin %u is %u, voltage is %.2fV", BAT_PIN, rawValue, voltage);
-    DEBUG("Battery voltage on pin %u is %umV", BAT_PIN, analogReadMilliVolts(BAT_PIN));
-    if (mode == BATTERY_MODE) {
-      display(battery.level(), CRGB::Yellow);
-    }
+    voltage = battery.voltage();
+    DEBUG("Battery voltage is %umV, level is %u%%", voltage, battery.level(voltage));
   }
 }
 
